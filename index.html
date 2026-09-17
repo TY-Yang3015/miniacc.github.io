@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="MiniAcc: investigating how to accelerate large video diffusion models on a single GPU.">
+  <meta name="keywords" content="Video Diffusion, MiniMax-H3, Inference Acceleration, INT8 Quantization, Single GPU">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiniAcc: Accelerating Large Video Diffusion Models on a Single GPU</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <h1 class="title is-1 publication-title">MiniAcc: Accelerating Large Video<br>Diffusion Models on a Single GPU</h1>
+
+          <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://ty-yang3015.github.io/">Tianyue Yang</a>
+            </span>
+          </div>
+
+          <div class="is-size-6 publication-authors">
+            <span class="author-block">A low-budget research project: one consumer GPU, no training run, no cluster.</span>
+          </div>
+
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <span class="link-block">
+                <a href="https://github.com/TY-Yang3015/MiniAcc"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="fab fa-github"></i></span>
+                  <span>Code</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href="https://ty-yang3015.github.io/blog/2026/09/17/miniacc/"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="fas fa-blog"></i></span>
+                  <span>Blog Post</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href="#BibTeX"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="fas fa-file-alt"></i></span>
+                  <span>Cite</span>
+                </a>
+              </span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <img src="./static/images/miniacc/trio-0195-montage.jpg" alt="Same prompt across three serving configurations" style="width:100%; height:auto;">
+      <h2 class="subtitle has-text-centered">
+        The same prompt served three ways on one RTX 4090. Our measurements so far point to weight copying, not arithmetic, as the dominant cost of serving a large video diffusion model from a single GPU.
+      </h2>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Overview</h2>
+        <div class="content has-text-justified">
+          <p>
+            MiniMax-H3 turns a text prompt into a five-second video with synchronised audio, but the model is far too large to keep on one graphics card. Every request therefore shuttles its weights from main memory to the GPU, layer by layer. This project measures where the time actually goes in that setting and asks how much faster the model can be served under a strict budget: one RTX 4090, no training compute, no extra hardware.
+          </p>
+          <p>
+            We evaluated nine published acceleration techniques one at a time on a frozen workload, with paired video-quality scoring throughout. Only the two techniques that reduced data movement helped: precomputing per-layer conditioning values (an AdaLN sidecar) and storing weights as 8-bit integers via ComfyUI's INT8 path. Every compute-side technique, including sparse attention and 8-bit attention, measured no gain on its own.
+          </p>
+          <p>
+            Combining the two winners gives a <strong>2.19&times;</strong> speedup with output we cannot distinguish from baseline on our metrics. Once the copying cost is removed, 8-bit attention (SageAttention) starts to pay, reaching <strong>2.51&times;</strong> — but our 16-clip paired study shows it also costs measurable quality in overall consistency and imaging, so the repository keeps both configurations and documents the trade-off rather than hiding it.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">How the pipeline fits together</h2>
+        <div class="content has-text-justified">
+          <p>
+            The integrated pipeline attacks the bottleneck lane directly: 8-bit weights halve the bytes that travel to the GPU on every denoising pass, precomputed conditioning removes repeated per-layer work, and 8-bit attention trims the compute that remains.
+          </p>
+          <img src="./static/images/miniacc/pipeline-diagram.png" alt="The MiniAcc serving pipeline" style="width:100%; height:auto; margin-top: 20px;">
+        </div>
+      </div>
+    </div>
+    </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Demonstration</h2>
+        <div class="content has-text-centered">
+          <p>Both clips use the same prompt, <em>&ldquo;A person is squat&rdquo;</em>, and the same seed.</p>
+        </div>
+        <div class="columns is-centered">
+          <div class="column is-half has-text-centered">
+            <img src="./static/images/miniacc/demo-baseline.gif" alt="Baseline serving demo" style="width:100%; height:auto;">
+            <p class="is-size-6" style="margin-top: 0.5rem;">Baseline serving (326.5 s per request)</p>
+          </div>
+          <div class="column is-half has-text-centered">
+            <img src="./static/images/miniacc/demo-pipeline.gif" alt="Integrated pipeline demo" style="width:100%; height:auto;">
+            <p class="is-size-6" style="margin-top: 0.5rem;">Integrated pipeline (149.3 s per request)</p>
+          </div>
+        </div>
+        <div class="content has-text-centered" style="margin-top: 2rem;">
+          <p>Clips from the pipeline across four research prompts.</p>
+          <img src="./static/images/miniacc/pipeline-montage.jpg" alt="Pipeline demo montage" style="width:100%; height:auto;">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Results</h2>
+
+        <div class="content has-text-justified" style="margin-bottom: 40px;">
+          <h3 class="title is-4 has-text-centered">Where a request spends its time</h3>
+          <img src="./static/images/miniacc/chart-time-breakdown.png" alt="Time breakdown per request stage" style="width:100%; height:auto;">
+          <p class="is-size-6 has-text-centered">The denoising stage shrinks from 256.9 s to 60.6 s as the techniques are layered on. Text encoding and decoding are untouched.</p>
+        </div>
+
+        <div class="content has-text-justified" style="margin-bottom: 40px;">
+          <h3 class="title is-4 has-text-centered">Every module on its own</h3>
+          <img src="./static/images/miniacc/chart-individual-modules.png" alt="Speed-up of each module tested alone" style="width:100%; height:auto;">
+          <p class="is-size-6 has-text-centered">Only the two data-movement techniques beat the baseline alone. Compute-side methods all measure about 1.0&times; here.</p>
+        </div>
+
+        <div class="content has-text-justified" style="margin-bottom: 40px;">
+          <h3 class="title is-4 has-text-centered">The integrated configurations</h3>
+          <img src="./static/images/miniacc/chart-integrated.png" alt="Integrated pipeline speed-ups" style="width:100%; height:auto;">
+        </div>
+
+        <div class="content has-text-justified" style="margin-bottom: 40px;">
+          <h3 class="title is-4 has-text-centered">Paired quality, 16 clips</h3>
+          <img src="./static/images/miniacc/chart-quality-deltas.png" alt="Paired quality deltas" style="width:100%; height:auto;">
+          <p class="is-size-6 has-text-centered">Paired VBench deltas against the Sage-free pipeline (six metrics at n=16, overall consistency at n=4; negative is worse). Sage's cost concentrates in overall consistency and imaging, and it is consistent across clips. Sol is quality-neutral but slower.</p>
+          <table class="table is-bordered is-striped is-narrow is-hoverable" style="margin: 1.5rem auto 0 auto;">
+            <thead>
+              <tr><th>Metric</th><th>Sage &Delta;</th><th>Sol &Delta;</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Subject consistency</td><td>+0.14</td><td>+0.63</td></tr>
+              <tr><td>Background consistency</td><td>&minus;0.31</td><td>&minus;0.51</td></tr>
+              <tr><td>Motion smoothness</td><td>+0.91</td><td>&minus;0.03</td></tr>
+              <tr><td>Dynamic degree</td><td>+6.25</td><td>0.00</td></tr>
+              <tr><td>Aesthetic quality</td><td>+1.60</td><td>+1.28</td></tr>
+              <tr><td>Imaging quality</td><td><strong>&minus;4.71</strong></td><td>&minus;0.46</td></tr>
+              <tr><td>Overall consistency</td><td><strong>&minus;29.82</strong></td><td>+0.20</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="content has-text-justified">
+          <h3 class="title is-4 has-text-centered">Resource budgets</h3>
+          <table class="table is-bordered is-striped is-narrow is-hoverable" style="margin: 0 auto;">
+            <tbody>
+              <tr><td>Serving GPU</td><td>1 &times; RTX 4090 (24 GB) or 1 &times; A100 (80 GB), one server per device</td></tr>
+              <tr><td>GPU headroom</td><td>&ge; 8 GiB free on the assigned device at all times, checked continuously</td></tr>
+              <tr><td>Host memory</td><td>&ge; 16 GiB available enforced; &ge; 64 GB recommended during model load</td></tr>
+              <tr><td>Disk</td><td>&asymp; 120 GB for model weights and caches</td></tr>
+              <tr><td>Timing</td><td>request-to-file wall time including weight streaming; setup and warmup always excluded</td></tr>
+              <tr><td>Quality</td><td>frozen VBench metrics, scored in like-for-like pairs only</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="BibTeX">
+  <div class="container is-max-desktop content">
+    <h2 class="title">BibTeX</h2>
+    <pre><code>@misc{miniacc2026,
+  title        = {MiniAcc: Accelerating Large Video Diffusion Models on a Single GPU},
+  author       = {Yang, Tianyue},
+  year         = {2026},
+  howpublished = {\url{https://github.com/TY-Yang3015/MiniAcc}},
+  note         = {Research code and project page \url{https://miniacc.github.io}}
+}</code></pre>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <div class="content has-text-centered">
+      <a class="icon-link" href="https://github.com/TY-Yang3015/MiniAcc" class="external-link">
+        <i class="fab fa-github"></i>
+      </a>
+    </div>
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+          <p>
+            This website is licensed under a <a rel="license"
+                                                href="http://creativecommons.org/licenses/by-sa/4.0/">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+          <p>
+            This website template was adapted from <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
